@@ -1,0 +1,25 @@
+# Git
+.git
+.gitignore
+.github
+
+# Personal configs
+.env
+.env.local
+token.json
+client_secret.json
+
+# Large ML Models
+ml_models_pro/
+*.pkl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
