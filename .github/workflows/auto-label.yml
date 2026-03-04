@@ -1,0 +1,39 @@
+name: Auto Label PRs
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Auto-label based on branch name
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const branchName = context.payload.pull_request.head.ref;
+
+            let label = 'patch'; // default
+
+            // Check branch name patterns
+            if (branchName.startsWith('feature/') || branchName.includes('feat/')) {
+              label = 'minor';
+            } else if (branchName.startsWith('breaking/') || branchName.includes('major/')) {
+              label = 'major';
+            }
+
+            // Add the label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              labels: [label]
+            });
+
+            console.log(`Added label '${label}' to PR #${prNumber}`);

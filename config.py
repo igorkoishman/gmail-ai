@@ -18,7 +18,7 @@ class Config:
     # Gmail API
     CLIENT_SECRET_PATH = os.getenv('CLIENT_SECRET_PATH', 'client_secret.json')
     TOKEN_PATH = os.getenv('TOKEN_PATH', 'token.json')
-    SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+    SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
     # Browserless (IMAP) Auth
     GMAIL_USER = os.getenv('GMAIL_USER', '')

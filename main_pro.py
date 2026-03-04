@@ -4,6 +4,7 @@ import numpy as np
 import joblib
 import argparse
 import time
+import schedule
 from typing import List, Dict, Any
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -13,6 +14,7 @@ from sklearn.preprocessing import LabelEncoder
 from config import Config
 from ai_engine import gemini_classify
 from database_engine import DatabaseEngine
+from gmail_engine import GmailEngine
 
 class ProClassifier:
     def __init__(self, model_dir="ml_models_pro"):
@@ -137,16 +139,84 @@ class ProClassifier:
         self.db.update_ai_predictions(results)
         print("✅ DB updated with all local ML predictions.")
 
+    # --- PHASE 5: BACKGROUND SERVICE ---
+    def run_service_cycle(self):
+        print("\n🔄 [SERVICE] Starting sync cycle...")
+        try:
+            gmail = GmailEngine()
+        except Exception as e:
+            print(f"❌ [SERVICE ERROR] Failed to initialize GmailEngine: {e}")
+            return
+            
+        emails = gmail.fetch_new_emails(max_results=50, query="in:inbox is:unread")
+        
+        if emails:
+            self.db.save_emails(emails)
+            print(f"✅ Saved {len(emails)} new emails to DB.")
+            
+            # Run prediction on these new emails to generate labels
+            print("🧠 Running predictions on new emails...")
+            self.predict_all()
+            
+            # Apply labels back to Gmail
+            conn = self.db._get_connection()
+            df = pd.read_sql("SELECT threadId, ai_category FROM emails WHERE ai_category IS NOT NULL", conn)
+            conn.close()
+            
+            label_dict = df.set_index('threadId')['ai_category'].to_dict()
+            labeled_count = 0
+            
+            for email in emails:
+                tid = email['threadId']
+                if tid in label_dict:
+                    cat = label_dict[tid]
+                    # Don't apply 'None' or empty categories
+                    if pd.notna(cat) and cat.strip():
+                        if gmail.apply_label_to_thread(tid, cat):
+                            labeled_count += 1
+                            
+            print(f"✅ Applied labels to {labeled_count} threads in Gmail.")
+        else:
+            print("📭 No new unread emails.")
+            
+        print("💤 [SERVICE] Sync cycle complete. Waiting for next run...")
+
+    def run_background_service(self, interval_minutes=10):
+        print(f"🚀 [SERVICE] Starting Gmail AI background service. Syncing every {interval_minutes} minutes.")
+        
+        # Run first cycle immediately
+        self.run_service_cycle()
+        
+        # Schedule subsequent cycles
+        schedule.every(interval_minutes).minutes.do(self.run_service_cycle)
+        
+        while True:
+            try:
+                schedule.run_pending()
+                time.sleep(1)
+            except KeyboardInterrupt:
+                print("\n🛑 Service stopped by user.")
+                break
+            except Exception as e:
+                print(f"❌ Unexpected error in service loop: {e}")
+                time.sleep(60) # Wait a minute before retrying on crash
+
 
 def main():
     parser = argparse.ArgumentParser(description="Gmail AI Pro: MySQL + Full Content + Human-in-the-loop")
     parser.add_argument("--teach", action="store_true", help="Initiate Gemini teaching (targets 5000 AI-classified emails)")
     parser.add_argument("--train", action="store_true", help="Retrain the local brain")
     parser.add_argument("--predict", action="store_true", help="Run local predictions")
+    parser.add_argument("--service", action="store_true", help="Run as a background daemon (fetches, predicts, labels every 10 min)")
     args = parser.parse_args()
 
     pro = ProClassifier()
     
+    # 4. Background Service
+    if args.service:
+        pro.run_background_service(interval_minutes=10)
+        return
+
     # 1. Teach (Gemini)
     if args.teach:
         pro.teach_with_gemini()
@@ -161,8 +231,8 @@ def main():
     if args.predict:
         pro.predict_all()
 
-    if not any([args.teach, args.train, args.predict]):
-        print("Please specify an action: --teach, --train, or --predict.")
+    if not any([args.teach, args.train, args.predict, args.service]):
+        print("Please specify an action: --teach, --train, --predict, or --service.")
         parser.print_help()
         return
 
