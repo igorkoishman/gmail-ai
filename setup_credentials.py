@@ -59,10 +59,10 @@ def setup_gmail_auth(headless=False):
 
     if headless:
         # For remote/headless servers
-        creds = flow.run_console()
+        creds = flow.run_console(access_type='offline', prompt='consent')
     else:
         # For local machines with browser
-        creds = flow.run_local_server(port=0)
+        creds = flow.run_local_server(port=0, access_type='offline', prompt='consent')
 
     # Save credentials
     with open(Config.TOKEN_PATH, 'w') as f:
