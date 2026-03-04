@@ -30,3 +30,6 @@ token.json
 # OS
 .DS_Store
 Thumbs.db
+
+# ML models (too large for standard git)
+ml_models_pro/
