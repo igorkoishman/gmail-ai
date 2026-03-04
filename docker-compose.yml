@@ -19,5 +19,17 @@ services:
     ports:
       - "8080:8080"
 
+  app:
+    image: igorkoishman/gmail-ai:latest
+    container_name: gmail-ai-service
+    restart: always
+    depends_on:
+      - db
+    env_file:
+      - .env
+    volumes:
+      - ./token.json:/app/token.json
+      - ./ml_models_pro:/app/ml_models_pro
+
 volumes:
   mysql_data:
