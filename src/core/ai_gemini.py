@@ -5,7 +5,7 @@ import time
 import ssl
 from typing import Any, List, Dict
 from google import genai
-from config import Config
+from .config import Config
 
 # SSL Patching for Gemini
 ssl._create_default_https_context = ssl._create_unverified_context

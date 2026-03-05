@@ -1,6 +1,5 @@
-from main_pro import ProClassifier
-
-pc = ProClassifier()
+from src.ml.base import BaseML
+pc = BaseML()
 test_cases = [
     ('igorkoishman@gmail.com', 'Some Category', 'Me expected'),
     ('marina0020@gmail.com', 'Me', 'Marina expected'),

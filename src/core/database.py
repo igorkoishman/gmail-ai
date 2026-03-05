@@ -1,7 +1,7 @@
 import mysql.connector
 import os
 from typing import List, Dict, Any, Optional
-from config import Config
+from .config import Config
 
 class DatabaseEngine:
     def __init__(self):

@@ -1,6 +1,9 @@
 import base64
 import json
-from gmail_engine import GmailEngine
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.core.gmail import GmailEngine
 
 gmail = GmailEngine()
 thread_id = '19c9e7718323c17b'

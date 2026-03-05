@@ -7,7 +7,7 @@ from email.utils import parsedate_to_datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from config import Config
+from .config import Config
 
 class GmailEngine:
     def __init__(self):
