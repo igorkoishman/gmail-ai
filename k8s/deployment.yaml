@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: classifier
-        image: your-docker-registry/gmail-ai:latest
+        image: igorkoishman/gmail-ai:latest
         command: ["python", "main.py", "--service", "--interval", "24"]
         envFrom:
         - secretRef:
