@@ -92,3 +92,4 @@ During development, the AI assistant recorded detailed walkthroughs, plans, and 
 - [Project Summary & Logs](.gemini/project_summary.md)
 - [Linux Deployment Guide](.gemini/linux_deployment_guide.md)
 - [Apps Script Automation Guide](.gemini/apps_script_automation_guide.md)
+ 
