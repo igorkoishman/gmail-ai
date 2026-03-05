@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gmail-ai
+  labels:
+    app: gmail-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gmail-ai
+  template:
+    metadata:
+      labels:
+        app: gmail-ai
+    spec:
+      containers:
+      - name: classifier
+        image: igorkoishman/gmail-ai:latest
+        command: ["python", "main.py", "--service", "--interval", "24"]
+        envFrom:
+        - secretRef:
+            name: gmail-ai-secrets
+        volumeMounts:
+        - name: credentials
+          mountPath: /app/token.json
+          subPath: token.json
+        - name: models
+          mountPath: /app/ml_models_pro
+      volumes:
+      - name: credentials
+        secret:
+          secretName: gmail-ai-google-token
+      - name: models
+        persistentVolumeClaim:
+          claimName: gmail-ai-models-pvc

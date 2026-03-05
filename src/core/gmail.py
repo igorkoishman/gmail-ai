@@ -1,11 +1,13 @@
 import base64
 import os
+import re
+import html
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from config import Config
+from .config import Config
 
 class GmailEngine:
     def __init__(self):
@@ -29,7 +31,7 @@ class GmailEngine:
 
     def get_or_create_label(self, category_name: str) -> str:
         """Get the Gmail Label ID for a category, creating it if it doesn't exist."""
-        label_name = f"AI/{category_name}"
+        label_name = category_name
         
         if label_name in self._label_cache:
             return self._label_cache[label_name]
@@ -65,6 +67,47 @@ class GmailEngine:
             print(f"Error applying label to thread {thread_id}: {error}")
             return False
 
+    def _get_body(self, payload):
+        """Recursively extract text from email payload, preferring plain text."""
+        parts_to_process = []
+        if 'parts' in payload:
+            parts_to_process = payload['parts']
+        else:
+            # Single part message
+            parts_to_process = [payload]
+
+        plain_text_parts = []
+        html_parts = []
+
+        def collect_parts(parts):
+            for part in parts:
+                mime = part.get('mimeType', '')
+                if mime == 'text/plain':
+                    data = part.get('body', {}).get('data', '')
+                    if data:
+                        plain_text_parts.append(base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore'))
+                elif mime == 'text/html':
+                    data = part.get('body', {}).get('data', '')
+                    if data:
+                        html_parts.append(base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore'))
+                elif 'parts' in part:
+                    collect_parts(part['parts'])
+
+        collect_parts(parts_to_process)
+
+        if plain_text_parts:
+            return "\n".join(plain_text_parts)
+        
+        if html_parts:
+            # Strip tags from all HTML parts and join them
+            full_html = "\n".join(html_parts)
+            # Use a slightly better regex or just strip tags
+            text = re.sub('<[^<]+?>', ' ', full_html)
+            text = html.unescape(text)
+            return " ".join(text.split())
+
+        return ""
+
     def fetch_new_emails(self, max_results=50, query="in:inbox is:unread"):
         """Fetch new emails matching the query and parse them for the database."""
         try:
@@ -95,16 +138,8 @@ class GmailEngine:
                     except:
                         date_obj = datetime.now()
                         
-                    # Body parsing
-                    body_data = ""
-                    if 'parts' in msg['payload']:
-                        for part in msg['payload']['parts']:
-                            if part['mimeType'] == 'text/plain':
-                                if 'data' in part['body']:
-                                    body_data = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8', errors='ignore')
-                                    break
-                    elif 'body' in msg['payload'] and 'data' in msg['payload']['body']:
-                        body_data = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8', errors='ignore')
+                    # Improved recursive body parsing
+                    body_data = self._get_body(msg['payload'])
                         
                     snippet = msg.get('snippet', '')
                     full_text = f"Subject: {subject}\nSender: {sender}\n\n{body_data}"
