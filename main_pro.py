@@ -116,14 +116,14 @@ class ProClassifier:
             return
 
         conn = self.db._get_connection()
-        df = pd.read_sql("SELECT threadId, full_text FROM emails WHERE manual_category IS NULL", conn)
+        df = pd.read_sql("SELECT threadId, sender, full_text FROM emails WHERE manual_category IS NULL", conn)
         conn.close()
 
         if df.empty:
             print("🔮 No emails need prediction.")
             return
 
-        print(f"🔮 [PREDICTING] Applying Pro ML logic to {len(df)} emails...")
+        print(f"🔮 [PREDICTING] Applying Pro ML logic + Hard Rules to {len(df)} emails...")
         clf = joblib.load(self.model_file)
         vec = joblib.load(self.vec_file)
         enc = joblib.load(self.enc_file)
@@ -133,11 +133,111 @@ class ProClassifier:
         probs = np.max(clf.predict_proba(X), axis=1)
 
         results = []
-        for tid, cat, conf in zip(df['threadId'], enc.inverse_transform(preds), probs):
+        for tid, cat, conf, sender in zip(df['threadId'], enc.inverse_transform(preds), probs, df['sender']):
+            hard_cat = self._get_hard_rule(sender)
+            if hard_cat:
+                cat = hard_cat
+                conf = 1.0
+            else:
+                # Fallback for personal categories
+                if cat == "Me" and 'igorkoishman@gmail.com' not in sender.lower():
+                    cat = "Other/Review"
+                elif cat == "Marina" and 'marina0020@gmail.com' not in sender.lower():
+                    cat = "Other/Review"
             results.append({'threadId': tid, 'category': cat, 'confidence': conf})
         
         self.db.update_ai_predictions(results)
         print("✅ DB updated with all local ML predictions.")
+
+    def _get_hard_rule(self, sender: str) -> str:
+        """Override ML logic for specific critical senders."""
+        sender = sender.lower()
+        if 'igorkoishman@gmail.com' in sender:
+            return "Me"
+        if 'marina0020@gmail.com' in sender:
+            return "Marina"
+        if 'github' in sender or 'docker' in sender:
+            return "Work/Professional"
+        if 'ebay' in sender:
+            return "Shopping/Promotions"
+        if 'aliexpress' in sender:
+            return "Ali express adds"
+        return None
+
+    def bulk_label_history(self):
+        """Massive resilient loop to grab uncategorized threads from Gmail, predict, and label them."""
+        if not os.path.exists(self.model_file):
+            print("🔮 No local model found. Please train first by running --train.")
+            return
+
+        print("\n🚀 [BULK LABEL HISTORY] Starting massive resilient relabeling process...")
+        
+        try:
+            gmail = GmailEngine()
+        except Exception as e:
+            print(f"❌ [ERROR] Failed to initialize GmailEngine: {e}")
+            return
+
+        clf = joblib.load(self.model_file)
+        vec = joblib.load(self.vec_file)
+        enc = joblib.load(self.enc_file)
+
+        # We query for threads that DO NOT have any custom labels yet.
+        # This makes it naturally resilient—if it crashes, it just queries the remaining ones next time.
+        # It's an approximation, but grabbing a large chunk ensures we keep moving.
+        max_results = 200
+        
+        while True:
+            print(f"\n🔍 Fetching up to {max_results} unlabeled threads from Gmail...")
+            # We exclude our labels by searching for things without them.
+            # A simpler resilient approach is just to fetch raw threads, predict, and apply. 
+            # If the label the model predicts is already on it, the API just ignores the add request.
+            emails = gmail.fetch_new_emails(max_results=max_results, query="-has:userlabels")
+            
+            if not emails:
+                print("🎉 No more unlabeled threads found! Bulk labeling is complete.")
+                break
+
+            print(f"🧠 Predicting categories for {len(emails)} threads...")
+            # Quickly save to DB for history
+            self.db.save_emails(emails)
+            
+            # Predict
+            df = pd.DataFrame(emails)
+            X = vec.transform(df['full_text'].astype(str).str.lower())
+            preds = clf.predict(X)
+            probs = np.max(clf.predict_proba(X), axis=1)
+
+            results = []
+            labeled_count = 0
+            
+            for tid, cat, conf, sender in zip(df['threadId'], enc.inverse_transform(preds), probs, df['sender']):
+                # Hard rules override ML
+                hard_cat = self._get_hard_rule(sender)
+                if hard_cat:
+                    cat = hard_cat
+                    conf = 1.0
+                else:
+                    # Enforce strict personal categories: Only forced by sender rules above
+                    # If ML predicted Me/Marina for someone else, fall back to Other/Review
+                    if cat == "Me" and 'igorkoishman@gmail.com' not in sender.lower():
+                        cat = "Other/Review"
+                    elif cat == "Marina" and 'marina0020@gmail.com' not in sender.lower():
+                        cat = "Other/Review"
+
+                results.append({'threadId': tid, 'category': cat, 'confidence': conf})
+                
+                # Apply to Gmail directly (gmail engine creates the label without AI/ now)
+                if pd.notna(cat) and str(cat).strip():
+                    if gmail.apply_label_to_thread(tid, cat):
+                        labeled_count += 1
+                        print(f"  🏷️ Applied [{cat}] to thread {tid}")
+
+            self.db.update_ai_predictions(results)
+            print(f"✅ Batch complete: Applied labels to {labeled_count}/{len(emails)} threads.")
+            
+            # Brief pause to avoid hammering the Google API limits too hard
+            time.sleep(2)
 
     # --- PHASE 5: BACKGROUND SERVICE ---
     def run_service_cycle(self):
@@ -181,14 +281,14 @@ class ProClassifier:
             
         print("💤 [SERVICE] Sync cycle complete. Waiting for next run...")
 
-    def run_background_service(self, interval_minutes=10):
-        print(f"🚀 [SERVICE] Starting Gmail AI background service. Syncing every {interval_minutes} minutes.")
+    def run_background_service(self, interval_hours=6):
+        print(f"🚀 [SERVICE] Starting Gmail AI background service. Syncing every {interval_hours} hours.")
         
         # Run first cycle immediately
         self.run_service_cycle()
         
         # Schedule subsequent cycles
-        schedule.every(interval_minutes).minutes.do(self.run_service_cycle)
+        schedule.every(interval_hours).hours.do(self.run_service_cycle)
         
         while True:
             try:
@@ -207,14 +307,20 @@ def main():
     parser.add_argument("--teach", action="store_true", help="Initiate Gemini teaching (targets 5000 AI-classified emails)")
     parser.add_argument("--train", action="store_true", help="Retrain the local brain")
     parser.add_argument("--predict", action="store_true", help="Run local predictions")
-    parser.add_argument("--service", action="store_true", help="Run as a background daemon (fetches, predicts, labels every 10 min)")
+    parser.add_argument("--bulk-label", action="store_true", help="Run the resilient massive bulk relabeling process on all of Gmail")
+    parser.add_argument("--service", action="store_true", help="Run as a background daemon (fetches, predicts, labels every 6 hours)")
     args = parser.parse_args()
 
     pro = ProClassifier()
     
-    # 4. Background Service
+    # Background Service
     if args.service:
-        pro.run_background_service(interval_minutes=10)
+        pro.run_background_service(interval_hours=6)
+        return
+
+    # Massive Bulk Relabeling
+    if args.bulk_label:
+        pro.bulk_label_history()
         return
 
     # 1. Teach (Gemini)
@@ -231,8 +337,8 @@ def main():
     if args.predict:
         pro.predict_all()
 
-    if not any([args.teach, args.train, args.predict, args.service]):
-        print("Please specify an action: --teach, --train, --predict, or --service.")
+    if not any([args.teach, args.train, args.predict, args.bulk_label, args.service]):
+        print("Please specify an action: --teach, --train, --predict, --bulk-label, or --service.")
         parser.print_help()
         return
 
