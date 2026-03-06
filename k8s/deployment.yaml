@@ -1,36 +1,92 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gmail-ai
-  labels:
-    app: gmail-ai
+  name: gmail-ai-db
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: gmail-ai
+      app: gmail-ai-db
   template:
     metadata:
       labels:
-        app: gmail-ai
+        app: gmail-ai-db
     spec:
       containers:
-      - name: classifier
+      - name: mariadb
+        image: mariadb:latest
+        env:
+        - name: MARIADB_ROOT_PASSWORD
+          value: ""
+        - name: MARIADB_ALLOW_EMPTY_ROOT_PASSWORD
+          value: "yes"
+        - name: MARIADB_DATABASE
+          value: "gmail_ai"
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: db-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: db-storage
+        persistentVolumeClaim:
+          claimName: gmail-ai-db-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-prod
+spec:
+  selector:
+    app: gmail-ai-db
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gmail-ai-service-prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gmail-ai-prod
+  template:
+    metadata:
+      labels:
+        app: gmail-ai-prod
+    spec:
+      containers:
+      - name: gmail-ai
         image: igorkoishman/gmail-ai:latest
-        command: ["python", "main.py", "--service", "--interval", "24"]
+        imagePullPolicy: Always
+        # No more manual pip install needed in the new image!
+        args: ["python", "main.py", "--service", "--cron", "0 0 * * *"]
         envFrom:
         - secretRef:
-            name: gmail-ai-secrets
+            name: gmail-ai-env
+        env:
+        - name: DB_HOST
+          value: "mysql-prod"
+        - name: DB_NAME
+          value: "gmail_ai"
+        - name: DB_USER
+          value: "root"
+        - name: DB_PASSWORD
+          value: ""
         volumeMounts:
-        - name: credentials
+        - name: data-storage
           mountPath: /app/token.json
           subPath: token.json
-        - name: models
+        - name: data-storage
           mountPath: /app/ml_models_pro
+          subPath: ml_models_pro
+        - name: data-storage
+          mountPath: /app/client_secret.json
+          subPath: client_secret.json
       volumes:
-      - name: credentials
-        secret:
-          secretName: gmail-ai-google-token
-      - name: models
+      - name: data-storage
         persistentVolumeClaim:
-          claimName: gmail-ai-models-pvc
+          claimName: gmail-ai-data-pvc

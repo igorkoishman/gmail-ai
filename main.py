@@ -16,8 +16,8 @@ def main():
     parser.add_argument("--predict", action="store_true", help="Run ML prediction on local database")
     parser.add_argument("--bulk-label", action="store_true", help="Resilient mass labeling of Gmail inbox")
     parser.add_argument("--service", action="store_true", help="Run as persistent background service")
-    parser.add_argument("--once", action="store_true", help="Run a single sync cycle (Fetch, Predict, Label) and exit (Perfect for Cron Jobs)")
-    parser.add_argument("--interval", type=int, default=24, help="Sync interval in hours (default: 24)")
+    parser.add_argument("--cron", type=str, default="0 0 * * *", help="Cron expression for service sync (e.g. '0 0 * * *')")
+    parser.add_argument("--once", action="store_true", help="Run a single sync cycle (Fetch, Predict, Label) and exit")
     
     args = parser.parse_args()
 
@@ -46,7 +46,7 @@ def main():
 
     elif args.service:
         service = GmailAIService()
-        service.start(interval_hours=args.interval)
+        service.start(cron_expression=args.cron)
 
     else:
         parser.print_help()
