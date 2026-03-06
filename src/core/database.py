@@ -7,11 +7,11 @@ class DatabaseEngine:
     def __init__(self):
         # Using Docker environment variables from your docker-compose.yml
         self.config = {
-            'user': 'root',
-            'password': 'password',
-            'host': '127.0.0.1', # Since we're running script on host but MySQL on Docker
-            'database': 'gmail',
-            'port': '3306'
+            'user': os.getenv('DB_USER', 'root'),
+            'password': os.getenv('DB_PASSWORD', 'password'),
+            'host': os.getenv('DB_HOST', '127.0.0.1'),
+            'database': os.getenv('DB_NAME', 'gmail'),
+            'port': os.getenv('DB_PORT', '3306')
         }
         self._init_db()
 
@@ -50,6 +50,14 @@ class DatabaseEngine:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         """)
+
+        # Create table for distributed locks
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS locks (
+                lock_name VARCHAR(100) PRIMARY KEY,
+                locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
         # Add indexes for performance on category lookups
         try:
@@ -62,6 +70,34 @@ class DatabaseEngine:
                 print("DB Schema: Indexes already exist, skipping creation.")
             else:
                 print(f"DB Schema: Error adding indexes: {err}")
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+    def acquire_lock(self, lock_name: str, expire_minutes: int = 10) -> bool:
+        """Try to acquire a named lock. Returns True if successful."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            # Clean up expired locks first (Safety)
+            cursor.execute("DELETE FROM locks WHERE locked_at < NOW() - INTERVAL %s MINUTE", (expire_minutes,))
+            
+            # Try to insert the lock
+            cursor.execute("INSERT INTO locks (lock_name) VALUES (%s)", (lock_name,))
+            conn.commit()
+            return True
+        except mysql.connector.IntegrityError:
+            # Lock already exists
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
+    def release_lock(self, lock_name: str):
+        """Release a named lock."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM locks WHERE lock_name = %s", (lock_name,))
         conn.commit()
         cursor.close()
         conn.close()
