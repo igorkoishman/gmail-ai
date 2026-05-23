@@ -14,7 +14,7 @@ def run_aliexpress_fix():
     
     # 1. Fetch from Gmail using a query that finds these specific Hebrew phrases
     # Using OR to catch any of the variations
-    query = 'from:aliexpress OR "חבילה מס" OR "הזמנה מס" OR "בהמתנה לאישור : נשלחה"'
+    query = 'from:aliexpress OR "חבילה מס" OR "הזמנה מס" OR "בהמתנה לאישור" OR "עדכון מסירה" OR "הודעה על משלוח שמספרו" OR "יצאה מאזור המוצא" OR "מוכנה למשלוח" OR "יצאה למסירה" OR "נשלחה" OR "במדינה/באזור שלכם" OR "אושרה"'
     print(f"🚀 [STEP 1] Fetching missing emails from Gmail with query: {query}")
     emails = gmail.fetch_new_emails(max_results=500, query=query)
     
@@ -33,26 +33,14 @@ def run_aliexpress_fix():
     cursor.execute("SELECT id, threadId, full_text, subject, sender FROM emails")
     all_emails = cursor.fetchall()
     
-    # Regex patterns for the exact examples you gave, plus generic aliexpress
-    aliexpress_patterns = [
-        r"חבילה מס'",                               # חבילה מס' AP00814585802432
-        r"הזמנה מס'",                               # הזמנה מס' 1120510458622345
-        r"הזמנה \d+.*בהמתנה לאישור.*נשלחה",         # הזמנה 1120004611072345: בהמתנה לאישור : נשלחה
-        r"aliexpress\.com",                         # Sender is aliexpress
-        r"AliExpress"                               # General AliExpress mention
-    ]
-    
     updated_count = 0
     for email in all_emails:
-        # Combine text to search everywhere
-        text_to_check = str(email['full_text']) + " " + str(email['subject']) + " " + str(email['sender'])
+        sender_lower = str(email['sender']).lower()
+        subject_lower = str(email['subject']).lower()
         
-        is_aliexpress = False
-        for pattern in aliexpress_patterns:
-            if re.search(pattern, text_to_check, re.IGNORECASE):
-                is_aliexpress = True
-                break
-                
+        # Only mark as Ali express if sender is aliexpress or subject contains explicit Hebrew tracking phrases
+        is_aliexpress = 'aliexpress' in sender_lower or any(p in subject_lower for p in ["חבילה מס", "הזמנה מס", "בהמתנה לאישור", "עדכון מסירה", "הודעה על משלוח שמספרו"])
+        
         if is_aliexpress:
             update_cursor = conn.cursor()
             # Forcefully set manual_category to 'Ali express'
