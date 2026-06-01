@@ -39,11 +39,11 @@ def fix_ads():
                 )
                 update_cursor.close()
                 
-                # Apply correct single label in Gmail
-                gmail.apply_label_to_thread(email['threadId'], "Ali express adds")
-                
-                print(f"🔄 Thread {email['threadId']}: changed to 'Ali express adds' (was Manual: '{current_manual}', AI: '{current_ai}')")
-                fixed_count += 1
+            # ALWAYS apply correct single label in Gmail
+            gmail.apply_label_to_thread(email['threadId'], "Ali express adds")
+            
+            print(f"🔄 Thread {email['threadId']}: ensured label 'Ali express adds' is applied (was DB Manual: '{current_manual}', DB AI: '{current_ai}')")
+            fixed_count += 1
                 
     conn.commit()
     cursor.close()

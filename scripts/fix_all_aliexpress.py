@@ -43,12 +43,12 @@ def fix_all_aliexpress():
             )
             update_cursor.close()
             
-            # Update Gmail to ensure single-label policy applies
-            # The apply_label_to_thread function already strips out other AI labels
-            gmail.apply_label_to_thread(e['threadId'], correct_cat)
-            
-            print(f"🔄 Thread {e['threadId']}: changed to '{correct_cat}' (was Manual: '{current_manual}', AI: '{current_ai}')")
-            fixed_count += 1
+        # ALWAYS update Gmail to ensure single-label policy applies
+        # The apply_label_to_thread function strips out other custom labels
+        gmail.apply_label_to_thread(e['threadId'], correct_cat)
+        
+        print(f"🔄 Thread {e['threadId']}: ensured label '{correct_cat}' is applied (DB Manual: '{current_manual}', DB AI: '{current_ai}')")
+        fixed_count += 1
             
     conn.commit()
     cursor.close()

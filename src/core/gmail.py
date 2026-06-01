@@ -83,7 +83,7 @@ class GmailEngine:
                 
             self.service.users().threads().modify(userId='me', id=thread_id, body=body).execute()
             return True
-        except HttpError as error:
+        except Exception as error:
             print(f"Error applying label to thread {thread_id}: {error}")
             return False
 
