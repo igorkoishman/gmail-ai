@@ -19,11 +19,11 @@ This project is a sophisticated email categorization system that combines Google
 - **Robust Parsing**: Advanced regex-based JSON extraction to handle LLM response variations.
 - **Batch Processing**: Configurable batch sizes to minimize API calls and handle rate limits.
 
-### 4. Professional Classifier (`main_pro.py`)
+### 4. Professional Classifier (`main_pro.py`, `src/ml/`)
 The orchestrator of the two-stage classification workflow:
 - **Phase 1: Gemini Teaching**: Fetches a target number of emails (default 2000) and uses Gemini to generate high-quality labels.
 - **Phase 2: Local Training**: Trains a local `RandomForestClassifier` using `TfidfVectorizer` on the data labeled by Gemini and any manual labels provided by the user.
-- **Phase 3: Bulk Prediction**: Applies the local model to all remaining uncategorized emails for efficient, offline classification of the entire database.
+- **Phase 3: Bulk Prediction & Hard Rules**: Applies the local model to all remaining uncategorized emails for efficient, offline classification of the entire database. Integrates content-aware hard rules (`_get_hard_rule`) to inspect email body text for specific order and delivery notifications (such as AliExpress tracking updates) to prevent false promotional categorizations.
 
 ### 5. Data Ingestion (`mbox_engine.py`, `import_from_mbox.py`)
 - Supports importing legacy email data from MBOX files directly into the MySQL database.

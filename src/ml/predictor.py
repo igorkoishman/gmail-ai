@@ -30,8 +30,8 @@ class ProPredictor(BaseML):
         probs = np.max(clf.predict_proba(X), axis=1)
 
         results = []
-        for tid, cat, conf, sender in zip(df['threadId'], enc.inverse_transform(preds), probs, df['sender']):
-            hard_cat = self._get_hard_rule(sender)
+        for tid, cat, conf, sender, full_text in zip(df['threadId'], enc.inverse_transform(preds), probs, df['sender'], df['full_text']):
+            hard_cat = self._get_hard_rule(sender, str(full_text))
             if hard_cat:
                 cat = hard_cat
                 conf = 1.0
@@ -73,8 +73,8 @@ class ProPredictor(BaseML):
 
             results = []
             labeled_count = 0
-            for tid, cat, conf, sender in zip(df['threadId'], enc.inverse_transform(preds), probs, df['sender']):
-                hard_cat = self._get_hard_rule(sender)
+            for tid, cat, conf, sender, full_text in zip(df['threadId'], enc.inverse_transform(preds), probs, df['sender'], df['full_text']):
+                hard_cat = self._get_hard_rule(sender, str(full_text))
                 if hard_cat:
                     cat = hard_cat
                     conf = 1.0

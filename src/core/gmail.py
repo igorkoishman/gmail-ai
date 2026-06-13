@@ -57,13 +57,33 @@ class GmailEngine:
             return False
             
         try:
+            # Gather all known AI label IDs to ensure we only have one applied
+            all_known = [
+                'Alex Koishman', 'Ali express', 'Ali express adds', 'Ali express ad', 'Etrade', 'LinkedIn', 
+                'Marina', 'Me', 'Other', 'Survey', 'Synology', 'Finance/Banking & Payments', 
+                'Home/Synology', 'Israel Post', 'Newsletters/Digests', 'Other/Review', 'People/Family', 
+                'Security/Alerts', 'Shopping/Delivery Updates', 'Shopping/Orders & Receipts', 
+                'Shopping/Promotions', 'Subscriptions/Services', 'Surveys/Feedback', 
+                'Travel/Transportation', 'Work/Professional'
+            ]
+            ai_categories = set(Config.REQUIRED_CATEGORIES + all_known)
+            ai_label_ids = {self._label_cache[cat] for cat in ai_categories if cat in self._label_cache}
+            
+            thread_data = self.service.users().threads().get(userId='me', id=thread_id, format='minimal').execute()
+            messages = thread_data.get('messages', [])
+            current_labels = messages[0].get('labelIds', []) if messages else []
+            
+            labels_to_remove = [lid for lid in current_labels if lid in ai_label_ids and lid != label_id]
+            
             body = {
                 'addLabelIds': [label_id],
-                # 'removeLabelIds': ['UNREAD'] # Optional: remove inbox/unread if desired
             }
+            if labels_to_remove:
+                body['removeLabelIds'] = labels_to_remove
+                
             self.service.users().threads().modify(userId='me', id=thread_id, body=body).execute()
             return True
-        except HttpError as error:
+        except Exception as error:
             print(f"Error applying label to thread {thread_id}: {error}")
             return False
 
