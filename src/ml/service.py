@@ -4,12 +4,15 @@ from .predictor import ProPredictor
 from ..core.gmail import GmailEngine
 import sys
 
+import time
+import pandas as pd
+
 class GmailAIService:
     def __init__(self):
         self.predictor = ProPredictor()
         self.lock_name = "gmail_sync_lock"
 
-    def run_cycle(self):
+    def run_cycle(self, max_batches=10, batch_size=50):
         print("\n🔄 [SERVICE] Attempting to start sync cycle...")
         
         # Distributed Lock: Only one pod can run the cycle
@@ -19,25 +22,44 @@ class GmailAIService:
 
         try:
             gmail = GmailEngine()
-            emails = gmail.fetch_new_emails(max_results=50, query="in:inbox is:unread")
+            total_labeled = 0
+            seen_thread_ids = set()
             
-            if emails:
-                self.predictor.db.save_emails(emails)
-                self.predictor.predict_all()
+            for batch_num in range(max_batches):
+                # Query all inbox emails without user labels (catches both unread and read emails)
+                emails = gmail.fetch_new_emails(max_results=batch_size, query="in:inbox -has:userlabels")
                 
-                conn = self.predictor.db._get_connection()
-                for email in emails:
-                    tid = email['threadId']
-                    cursor = conn.cursor(dictionary=True)
-                    cursor.execute("SELECT ai_category FROM emails WHERE threadId = %s", (tid,))
-                    res = cursor.fetchone()
-                    if res and res['ai_category']:
-                        gmail.apply_label_to_thread(tid, res['ai_category'])
-                    cursor.close()
-                conn.close()
-                print(f"✅ Cycle complete for {len(emails)} emails.")
-            else:
-                print("📭 No new emails.")
+                # Filter out threads already attempted in this cycle
+                new_emails = [e for e in emails if e['threadId'] not in seen_thread_ids]
+                
+                if not new_emails:
+                    if batch_num == 0:
+                        print("📭 No unlabeled emails found in inbox.")
+                    break
+                
+                print(f"📥 Processing batch {batch_num + 1} ({len(new_emails)} unlabeled emails)...")
+                self.predictor.db.save_emails(new_emails)
+                predictions = self.predictor.predict_batch(new_emails)
+                
+                batch_labeled = 0
+                for pred in predictions:
+                    tid = pred['threadId']
+                    seen_thread_ids.add(tid)
+                    cat = pred['category']
+                    if pd.notna(cat) and str(cat).strip():
+                        if gmail.apply_label_to_thread(tid, cat):
+                            batch_labeled += 1
+                            print(f"  🏷️ Applied [{cat}] to {tid}")
+                
+                total_labeled += batch_labeled
+                print(f"✅ Batch {batch_num + 1} complete: {batch_labeled}/{len(new_emails)} labeled.")
+                
+                if len(emails) < batch_size:
+                    break
+                    
+                time.sleep(1)
+                
+            print(f"✅ Cycle complete: Total {total_labeled} emails labeled.")
         except Exception as e:
             print(f"❌ [SERVICE ERROR]: {e}")
         finally:

@@ -130,7 +130,7 @@ class GmailEngine:
 
         return ""
 
-    def fetch_new_emails(self, max_results=50, query="in:inbox is:unread"):
+    def fetch_new_emails(self, max_results=50, query="in:inbox -has:userlabels"):
         """Fetch new emails matching the query and parse them for the database."""
         try:
             results = self.service.users().threads().list(userId='me', q=query, maxResults=max_results).execute()
