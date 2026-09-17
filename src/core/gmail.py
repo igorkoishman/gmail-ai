@@ -1,3 +1,5 @@
+import socket
+socket.setdefaulttimeout(60.0)
 import base64
 import os
 import re
@@ -26,7 +28,7 @@ class GmailEngine:
             labels = results.get('labels', [])
             for label in labels:
                 self._label_cache[label['name']] = label['id']
-        except HttpError as error:
+        except Exception as error:
             print(f"An error occurred fetching labels: {error}")
 
     def get_or_create_label(self, category_name: str) -> str:
@@ -46,7 +48,7 @@ class GmailEngine:
             new_label = self.service.users().labels().create(userId='me', body=label_body).execute()
             self._label_cache[label_name] = new_label['id']
             return new_label['id']
-        except HttpError as error:
+        except Exception as error:
             print(f"Error creating label {label_name}: {error}")
             return None
 
@@ -179,6 +181,6 @@ class GmailEngine:
                     
             return parsed_emails
             
-        except HttpError as error:
+        except Exception as error:
             print(f"An error occurred fetching emails: {error}")
             return []
